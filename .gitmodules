@@ -1,7 +1,7 @@
 [submodule "submodules/trashnet"]
-	path = submodules/trashnet
-	url = git@github.com:Cam2337/trashnet.git
+    path = submodules/trashnet
+    url = https://github.com/Cam2337/trashnet.get
 
 [submodule "submodules/TACO"]
-	path = submodules/TACO
-	url = https://github.com/veer-shah/TACO.git
+    path = submodules/TACO
+    url = https://github.com/veer-shah/TACO.git
