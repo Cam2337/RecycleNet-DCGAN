@@ -24,7 +24,9 @@ function main() {
         rm -rf "${HOME}/torch"
     fi
 
-    git clone git@github.com:Cam2337/distro.git ~/torch --recursive
+    # Install Torch
+    export TORCH_NVCC_FLAGS="-D__CUDA_NO_HALF_OPERATORS__"
+    git clone https://github.com/Cam2337/distro.git ~/torch --recursive
     pushd ~/torch
     bash install-deps
     bash install.sh
