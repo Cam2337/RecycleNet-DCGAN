@@ -93,7 +93,7 @@ def train(
     learning_rate: float,
     num_epochs: int,
     beta1: int,
-    beta2: int) -> Tuple[List[float], List[float]]:
+    beta2: int) -> Tuple[List[float], List[float], List[torch.Tensor]]:
     """The primary function for DCGAN training.
 
     Note: Per GANHacks, Discriminator training is conducted in *two* separate
@@ -112,7 +112,8 @@ def train(
 
     Returns:
         A tuple of lists containing the loss of the Generator and the
-        Discriminator, respectively, from each training iteration.
+        Discriminator, respectively, from each training iteration, along with
+        a list of images.
     """
 
     # Batch of input latent vectors
@@ -204,19 +205,23 @@ def train(
                       f'Loss_D: {errD.item():.4f}\tLoss_G: {errG.item():.4f}\t'
                       f'D(x): {D_x:.4f}\tD(G(z)): {D_G_z1:.4f} / {D_G_z2:.4f}')
 
-            if (iters % 500 == 0) or ((epoch == num_epochs - 1) and (i == len(dataloader) - 1)):
+            if ((iters % 500 == 0) or
+                ((epoch == num_epochs - 1) and (i == len(dataloader) - 1))):
                 with torch.no_grad():
                     fake = netG(fixed_noise).detach().cpu()
-                img_list.append(vutils.make_grid(fake, padding=2, normalize=True))
+                img_list.append(
+                    vutils.make_grid(fake, padding=2, normalize=True))
 
             iters += 1
 
-    return (G_losses, D_losses)
+    return (G_losses, D_losses, img_list)
 
 def plot_results(
+    device: torch.Device,
     dataloader: torch.utils.data.DataLoader,
     G_losses: List[float],
-    D_losses: List[float]):
+    D_losses: List[float],
+    img_list: List[torch.Tensor]):
     """Plots a batch of real and fake images from the last epoch."""
     plt.figure(figsize=(10,5))
     plt.title('Generator and Discriminator Loss During Training')
@@ -238,7 +243,7 @@ def plot_results(
     plt.imshow(
         np.transpose(
             vutils.make_grid(
-                real_batch[0].to(model.device)[:64],
+                real_batch[0].to(device)[:64],
                 padding=5,
                 normalize=True
             ).cpu(),
@@ -296,7 +301,7 @@ def main():
     )
 
     # Run training and plot results
-    G_losses, D_losses = train(
+    G_losses, D_losses, img_list = train(
         netG,
         netD,
         dataloader,
@@ -306,7 +311,7 @@ def main():
         args.beta1,
         args.beta2,
     )
-    plot_results(dataloader, G_losses, D_losses)
+    plot_results(device, dataloader, G_losses, D_losses, img_list)
 
 if __name__ == '__main__':
     main()
