@@ -22,7 +22,7 @@ fi
 
 function main() {
     # Setup virtual environment
-    "${PIP3}" install venv
+    sudo apt-get install python3-venv
     "${PYTHON3}" -m venv ./venv
 
     # Activate virtual environment and install requirements
