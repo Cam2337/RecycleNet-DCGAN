@@ -2,8 +2,8 @@
 
 """Defines a DCGAN Discriminator and Generator for synthesizing waste images."""
 import os
+from typing import Any, Dict
 
-import matplotlib.pyplot as plt
 import numpy as np
 import torch.nn as nn
 
@@ -11,69 +11,89 @@ import torch
 import torchvision.transforms as transforms
 import torch.optim as optim
 
-print("Loading DCGAN model...")
+# Classes #
 
-####### Initialization (start) ########
+class Generator(nn.Module):
+    """Maps a latent space vector (z) to data-space."""
 
-# debug Flag
-DEBUG=False
+    def __init__(self, **kwargs: Dict[str, Any]):
+        """Creates a new instance of Generator.
 
-# number of GPUs
-ngpu = 1
+        Args:
+            **kwargs: An optional set of key/value pair arguments:
+                * latent_vector_size: The size of the Normally-distributed
+                latent-vector input. Defaults to 100.
+                * num_features: The feature size of the output data. Defaults
+                to 64 (e.g. 64x64 images).
+                * num_channels: The number of channels of the output data.
+                Defaults to 3 (e.g. RGB images).
+        """
 
-# decide which device we want to run on
-device = torch.device("cuda:0" if (torch.cuda.is_available() and ngpu > 0) else "cpu")
+        super(Generator, self).__init__()
 
-# image size
-image_size = 64
-
-# number of color channels in image
-num_channels = 3
-
-# number of generator feature
-ngf = 64
-
-# number of descriminator feature
-ndf = 64
-
-# generator latent vector size
-gvSize = 100
-
-# number of generator latent vectors
-ngv = 64
+        latent_vecor_size = kwargs.get('latent_vector_size', 100)
+        num_features = kwargs.get('num_features', 64)
+        num_channels = kwargs.get('num_channels', 3)
 
 
-####### Initialization (end) ########
-
-# DCGAN-Generator
-class DCGAN_Generator(nn.Module):
-    def __init__(self):
-        super(DCGAN_Generator,self).__init__()
-
-        # generator network
         self.generator = nn.Sequential(
             # layer-1 100(1x1) -> 512(4x4)
-            nn.ConvTranspose2d(gvSize, (ngf*8), 4, 2, 0, bias=False),
-            nn.BatchNorm2d(ngf*8),
-            nn.ReLU(True),
+            nn.ConvTranspose2d(
+                in_channels=latent_vecor_size,
+                out_channels=(num_features * 8),
+                kernel_size=4,
+                stride=2,
+                padding=0,
+                bias=False,
+            ),
+            nn.BatchNorm2d(num_features=num_features * 8),
+            nn.ReLU(inplace=True),
 
             # layer-2  512x(4x4) -> 256x(8x8)
-            nn.ConvTranspose2d((ngf*8), (ngf*4), 4, 2, 1,bias=False),
-            nn.BatchNorm2d(ngf*4),
-            nn.ReLU(True),
+            nn.ConvTranspose2d(
+                in_channels=(num_features * 8),
+                out_channels=(num_features * 4),
+                kernel_size=4,
+                stride=2,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm2d(num_feautres=num_features * 4),
+            nn.ReLU(inplace=True),
 
             # layer-3  256x(8x8) -> 128x(16x16)
-            nn.ConvTranspose2d((ngf*4), (ngf*2), 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf*2),
-            nn.ReLU(True),
+            nn.ConvTranspose2d(
+                in_channels=(num_features * 4),
+                out_channels=(num_features * 2),
+                kernel_size=4,
+                stride=2,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm2d(num_features=num_features * 2),
+            nn.ReLU(inplace=True),
 
             # layer-4  128x(16x16) -> 64x(32x32)
-            nn.ConvTranspose2d((ngf*2), (ngf), 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf),
-            nn.ReLU(True),
+            nn.ConvTranspose2d(
+                in_channels=(num_features * 2),
+                out_channels=(num_features),
+                kernel_size=4,
+                stride=2,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm2d(num_features=num_features),
+            nn.ReLU(inplace=True),
 
-            # layer-4  64x(32x32) -> 3x(64x64)
-            nn.ConvTranspose2d(ngf, num_channels, 4, 2, 1, bias=False),
+            # layer-5  64x(32x32) -> 3x(64x64)
+            nn.ConvTranspose2d(
+                in_channels=num_features,
+                out_channels=num_channels,
+                kernel_size=4,
+                stride=2,
+                padding=1,
+                bias=False,
+            ),
             nn.Tanh()
         )
 
@@ -81,62 +101,87 @@ class DCGAN_Generator(nn.Module):
     def forward(self, input):
         return self.generator(input)
 
+class Discriminator(nn.Module):
+    """
+    A binary classification network that takes an image as input and outputs
+    a scalar probability that the input image is real (as opposed to fake).
+    """
 
+    def __init__(self, **kwargs: Dict[str, Any]):
+        """Creates a new instance of Discriminator.
 
-# DCGAN - Discriminator
-class DCGAN_Discriminator(nn.Module):
-    def __init__(self):
-        super(DCGAN_Discriminator, self).__init__()
+        Args:
+            **kwargs: An optional set of key/value pair arguments:
+                * num_features: The feature size of the input data. Defaults
+                to 64 (e.g. 64x64 images).
+                * num_channels: The number of channels of the input data.
+                Defaults to 3 (e.g. RGB images).
+        """
+        super(Discriminator, self).__init__()
+
+        num_features = kwargs.get('num_features', 64)
+        num_channels = kwargs.get('num_channels', 3)
 
         # descriminator network
         self.discriminator = nn.Sequential(
+            # layer-1 3x(64x64) -> 64x(32x32)
+            nn.Conv2d(
+                in_channels=num_channels,
+                out_channels=num_features,
+                kernel_size=4,
+                stride=2,
+                padding=1,
+                bias=False,
+            ),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
-          # layer-1 3x(64x64) -> 64x(32x32)
-          nn.Conv2d(num_channels, ndf, 4, 2, 1, bias = False),
-          nn.LeakyReLU(0.2, True),
+            # layer-2 64x(32x32) -> 128x(16x16)
+            nn.Conv2d(
+                in_channels=num_features,
+                out_channels=(num_features * 2),
+                kernel_size=4,
+                stride=2,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm2d(num_features=num_features * 2),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
-          # layer-2 64x(32x32) -> 128x(16x16)
-          nn.Conv2d(ndf, (ndf*2), 4, 2, 1, bias = False),
-          nn.BatchNorm2d(ndf*2),
-          nn.LeakyReLU(0.2, True),
+            # layer-3 128x(16x16) -> 256x(8x8)
+            nn.Conv2d(
+                in_channels=(num_features * 2),
+                out_channels=(num_features * 4),
+                kernel_size=4,
+                stride=2,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm2d(num_features=num_features * 4),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
-          # layer-3 128x(16x16) -> 256x(8x8)
-          nn.Conv2d((ndf*2), (ndf*4), 4, 2, 1, bias = False),
-          nn.BatchNorm2d(ndf*4),
-          nn.LeakyReLU(0.2, True),
+            # layer-4 256x(8x8) -> 512x(4x4)
+            nn.Conv2d(
+                in_channels=(num_features * 4),
+                out_channels=(num_features * 8),
+                kernel_size=4,
+                stride=2,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm2d(num_features=512),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
-          # layer-4 256x(8x8) -> 512x(4x4)
-          nn.Conv2d((ndf*4), (ndf*8), 4, 2, 1, bias = False),
-          nn.BatchNorm2d(512),
-          nn.LeakyReLU(0.2, True),
-
-          #  layer-5 512x(4x4) -> 1x(1x1)
-          nn.Conv2d((ndf*8), 1, 4, 1, 0, bias = False),
-          nn.Sigmoid(),
+            #  layer-5 512x(4x4) -> 1x(1x1)
+            nn.Conv2d(
+                in_channels=(num_features * 8),
+                out_channels=1,
+                kernel_size=4,
+                stride=1,
+                padding=0,
+                bias=False,
+            ),
+            nn.Sigmoid(),
         )
+
     def forward(self, input):
         return self.discriminator(input)
-
-
-def weights_init(m):
-    classname = m.__class__.__name__
-    if classname.find('Conv') != -1:
-        nn.init.normal_(m.weight.data, 0.0, 0.02)
-    elif classname.find('BatchNorm') != -1:
-        nn.init.normal_(m.weight.data, 1.0, 0.02)
-        nn.init.constant_(m.bias.data, 0)
-
-
-
-
-netG = DCGAN_Generator().to(device)
-netG.apply(weights_init)
-
-netD = DCGAN_Discriminator().to(device)
-netD.apply(weights_init)
-
-if DEBUG == True:
-  # print Generator network
-  print(netG)
-  # print Descriminator network
-  print(netD)
