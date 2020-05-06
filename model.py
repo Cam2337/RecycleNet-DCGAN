@@ -31,64 +31,64 @@ class Generator(nn.Module):
 
         super(Generator, self).__init__()
 
-        latent_vecor_size = kwargs.get('latent_vector_size', 100)
-        num_features = kwargs.get('num_features', 64)
-        num_channels = kwargs.get('num_channels', 3)
+        self.latent_vector_size = kwargs.get('latent_vector_size', 100)
+        self.num_features = kwargs.get('num_features', 64)
+        self.num_channels = kwargs.get('num_channels', 3)
 
 
         self.generator = nn.Sequential(
             # layer-1 100(1x1) -> 512(4x4)
             nn.ConvTranspose2d(
-                in_channels=latent_vecor_size,
-                out_channels=(num_features * 8),
+                in_channels=self.latent_vector_size,
+                out_channels=(self.num_features * 8),
                 kernel_size=4,
                 stride=2,
                 padding=0,
                 bias=False,
             ),
-            nn.BatchNorm2d(num_features=num_features * 8),
+            nn.BatchNorm2d(num_features=self.num_features * 8),
             nn.ReLU(inplace=True),
 
             # layer-2  512x(4x4) -> 256x(8x8)
             nn.ConvTranspose2d(
-                in_channels=(num_features * 8),
-                out_channels=(num_features * 4),
+                in_channels=(self.num_features * 8),
+                out_channels=(self.num_features * 4),
                 kernel_size=4,
                 stride=2,
                 padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(num_feautres=num_features * 4),
+            nn.BatchNorm2d(num_features=self.num_features * 4),
             nn.ReLU(inplace=True),
 
             # layer-3  256x(8x8) -> 128x(16x16)
             nn.ConvTranspose2d(
-                in_channels=(num_features * 4),
-                out_channels=(num_features * 2),
+                in_channels=(self.num_features * 4),
+                out_channels=(self.num_features * 2),
                 kernel_size=4,
                 stride=2,
                 padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(num_features=num_features * 2),
+            nn.BatchNorm2d(num_features=self.num_features * 2),
             nn.ReLU(inplace=True),
 
             # layer-4  128x(16x16) -> 64x(32x32)
             nn.ConvTranspose2d(
-                in_channels=(num_features * 2),
-                out_channels=(num_features),
+                in_channels=(self.num_features * 2),
+                out_channels=(self.num_features),
                 kernel_size=4,
                 stride=2,
                 padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(num_features=num_features),
+            nn.BatchNorm2d(num_features=self.num_features),
             nn.ReLU(inplace=True),
 
             # layer-5  64x(32x32) -> 3x(64x64)
             nn.ConvTranspose2d(
-                in_channels=num_features,
-                out_channels=num_channels,
+                in_channels=self.num_features,
+                out_channels=self.num_channels,
                 kernel_size=4,
                 stride=2,
                 padding=1,
@@ -119,15 +119,15 @@ class Discriminator(nn.Module):
         """
         super(Discriminator, self).__init__()
 
-        num_features = kwargs.get('num_features', 64)
-        num_channels = kwargs.get('num_channels', 3)
+        self.num_features = kwargs.get('num_features', 64)
+        self.num_channels = kwargs.get('num_channels', 3)
 
         # descriminator network
         self.discriminator = nn.Sequential(
             # layer-1 3x(64x64) -> 64x(32x32)
             nn.Conv2d(
-                in_channels=num_channels,
-                out_channels=num_features,
+                in_channels=self.num_channels,
+                out_channels=self.num_features,
                 kernel_size=4,
                 stride=2,
                 padding=1,
@@ -137,32 +137,32 @@ class Discriminator(nn.Module):
 
             # layer-2 64x(32x32) -> 128x(16x16)
             nn.Conv2d(
-                in_channels=num_features,
-                out_channels=(num_features * 2),
+                in_channels=self.num_features,
+                out_channels=(self.num_features * 2),
                 kernel_size=4,
                 stride=2,
                 padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(num_features=num_features * 2),
+            nn.BatchNorm2d(num_features=self.num_features * 2),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
             # layer-3 128x(16x16) -> 256x(8x8)
             nn.Conv2d(
-                in_channels=(num_features * 2),
-                out_channels=(num_features * 4),
+                in_channels=(self.num_features * 2),
+                out_channels=(self.num_features * 4),
                 kernel_size=4,
                 stride=2,
                 padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(num_features=num_features * 4),
+            nn.BatchNorm2d(num_features=self.num_features * 4),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
             # layer-4 256x(8x8) -> 512x(4x4)
             nn.Conv2d(
-                in_channels=(num_features * 4),
-                out_channels=(num_features * 8),
+                in_channels=(self.num_features * 4),
+                out_channels=(self.num_features * 8),
                 kernel_size=4,
                 stride=2,
                 padding=1,
@@ -173,7 +173,7 @@ class Discriminator(nn.Module):
 
             #  layer-5 512x(4x4) -> 1x(1x1)
             nn.Conv2d(
-                in_channels=(num_features * 8),
+                in_channels=(self.num_features * 8),
                 out_channels=1,
                 kernel_size=4,
                 stride=1,

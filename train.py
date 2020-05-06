@@ -12,9 +12,10 @@ import utils
 
 import matplotlib.pyplot as plt
 import torch
-import torchvision.datasets as dset
+import torch.cuda
 import torch.nn as nn
 import torch.optim as optim
+import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
 
@@ -115,7 +116,7 @@ def train(
 
     # Batch of input latent vectors
     fixed_noise = torch.randn(
-        netG.latent_vector_size, netG.num_latent_vectors, 1, 1, device=device)
+        netG.num_features, netG.latent_vector_size, 1, 1, device=device)
 
     # Setup loss function and optimizers
     lossF = nn.BCELoss()
@@ -158,7 +159,7 @@ def train(
 
             ## Fake data
             noise = torch.randn(
-                b_size, netD.latent_vector_size, 1, 1, device=device)
+                b_size, netG.latent_vector_size, 1, 1, device=device)
 
             ## Generate fake image batch with G
             fake = netG(noise)
@@ -246,7 +247,7 @@ def main():
     args = parse_args()
 
     device = torch.device((
-        'cuda:0' if torch.cuda_is_available and args.num_gpus > 0 else 'cpu'))
+        'cuda:0' if torch.cuda.is_available and args.num_gpus > 0 else 'cpu'))
 
     # Initialize models
     netG = model.Generator().to(device)
@@ -284,7 +285,16 @@ def main():
     )
 
     # Run training and plot results
-    G_losses, D_losses = train(netG, netD, dataloader)
+    G_losses, D_losses = train(
+        netG,
+        netD,
+        dataloader,
+        device,
+        args.learning_rate,
+        args.num_epochs,
+        args.beta1,
+        args.beta2,
+    )
     plot_results(dataloader, G_losses, D_losses)
 
 if __name__ == '__main__':
