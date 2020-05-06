@@ -11,6 +11,7 @@ import model
 import utils
 
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.cuda
 import torch.nn as nn
@@ -57,7 +58,7 @@ def parse_args():
         '--learning-rate',
         help='The learning rate to apply during parameter updates.',
         type=float,
-        default=0.01,
+        default=0.0002,
     )
     parser.add_argument(
         '--num-epochs',
@@ -185,7 +186,8 @@ def train(
             netG.zero_grad()
             label.fill_(real_label)  # fake labels are real for generator cost
 
-            # Since we just updated D, perform another forward pass of all-fake batch through D
+            # Since we just updated D, perform another forward pass of all-fake
+            # batch through D
             output = netD(fake).view(-1)
 
             # Calculate G's loss based on this output
@@ -233,7 +235,16 @@ def plot_results(
     plt.subplot(1,2,1)
     plt.axis('off')
     plt.title('Real Images')
-    plt.imshow(np.transpose(vutils.make_grid(real_batch[0].to(model.device)[:64], padding=5, normalize=True).cpu(),(1,2,0)))
+    plt.imshow(
+        np.transpose(
+            vutils.make_grid(
+                real_batch[0].to(model.device)[:64],
+                padding=5,
+                normalize=True
+            ).cpu(),
+            (1,2,0),
+        ),
+    )
 
     # Plot the fake images from the last epoch
     plt.subplot(1,2,2)

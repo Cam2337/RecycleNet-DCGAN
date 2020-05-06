@@ -35,7 +35,6 @@ class Generator(nn.Module):
         self.num_features = kwargs.get('num_features', 64)
         self.num_channels = kwargs.get('num_channels', 3)
 
-
         self.main = nn.Sequential(
             # layer-1 100(1x1) -> 512(4x4)
             nn.ConvTranspose2d(
