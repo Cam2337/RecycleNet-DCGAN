@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+
 """Defines a DCGAN Discriminator and Generator for synthesizing waste images."""
 import os
 
@@ -85,10 +87,10 @@ class DCGAN_Generator(nn.Module):
 class DCGAN_Discriminator(nn.Module):
     def __init__(self):
         super(DCGAN_Discriminator, self).__init__()
-        
+
         # descriminator network
         self.discriminator = nn.Sequential(
-      
+
           # layer-1 3x(64x64) -> 64x(32x32)
           nn.Conv2d(num_channels, ndf, 4, 2, 1, bias = False),
           nn.LeakyReLU(0.2, True),
@@ -133,7 +135,7 @@ netG.apply(weights_init)
 netD = DCGAN_Discriminator().to(device)
 netD.apply(weights_init)
 
-if DEBUG == True:  
+if DEBUG == True:
   # print Generator network
   print(netG)
   # print Descriminator network
