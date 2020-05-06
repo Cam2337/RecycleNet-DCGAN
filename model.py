@@ -36,13 +36,13 @@ class Generator(nn.Module):
         self.num_channels = kwargs.get('num_channels', 3)
 
 
-        self.generator = nn.Sequential(
+        self.main = nn.Sequential(
             # layer-1 100(1x1) -> 512(4x4)
             nn.ConvTranspose2d(
                 in_channels=self.latent_vector_size,
                 out_channels=(self.num_features * 8),
                 kernel_size=4,
-                stride=2,
+                stride=1,
                 padding=0,
                 bias=False,
             ),
@@ -94,12 +94,12 @@ class Generator(nn.Module):
                 padding=1,
                 bias=False,
             ),
-            nn.Tanh()
+            nn.Tanh(),
         )
 
     # forward propagation
     def forward(self, input):
-        return self.generator(input)
+        return self.main(input)
 
 class Discriminator(nn.Module):
     """
@@ -123,7 +123,7 @@ class Discriminator(nn.Module):
         self.num_channels = kwargs.get('num_channels', 3)
 
         # descriminator network
-        self.discriminator = nn.Sequential(
+        self.main = nn.Sequential(
             # layer-1 3x(64x64) -> 64x(32x32)
             nn.Conv2d(
                 in_channels=self.num_channels,
@@ -168,7 +168,7 @@ class Discriminator(nn.Module):
                 padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(num_features=512),
+            nn.BatchNorm2d(num_features=self.num_features * 8),
             nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
             #  layer-5 512x(4x4) -> 1x(1x1)
@@ -184,4 +184,4 @@ class Discriminator(nn.Module):
         )
 
     def forward(self, input):
-        return self.discriminator(input)
+        return self.main(input)
