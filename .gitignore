@@ -130,3 +130,6 @@ dmypy.json
 
 # Jupyter notebooks
 .ipynb
+
+# Pytype
+.pytype/**
