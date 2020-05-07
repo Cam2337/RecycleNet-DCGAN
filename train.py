@@ -20,6 +20,11 @@ import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
 
+# Constants #
+
+RESULTS_DIR = 'results'
+FIGURES_DIR = 'figures'
+
 # Public Functions #
 
 def parse_args():
@@ -28,6 +33,11 @@ def parse_args():
     parser.add_argument(
         'dataroot',
         help='The root of the directory whose image data to process.',
+        type=str,
+    )
+    parser.add_argument(
+        'name',
+        help='The base name of this batch of synthesized images, e.g. "metal".',
         type=str,
     )
     parser.add_argument(
@@ -53,6 +63,11 @@ def parse_args():
         help='The size of the images.',
         type=int,
         default=64,
+    )
+    parser.add_argument(
+        '--headless',
+        help='If training should run in "headless" mode (e.g. no operator).',
+        action='store_true',
     )
     parser.add_argument(
         '--learning-rate',
@@ -138,8 +153,7 @@ def train(
     logging.info('Starting training...')
     for epoch in range(num_epochs):
         logging.info(f'Starting epoch: {epoch}...')
-        for i, data in enumerate(dataloader):
-
+        for i, data in enumerate(dataloader, 0):
             ############################
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
             ###########################
@@ -199,11 +213,17 @@ def train(
             D_G_z2 = output.mean().item()
             optG.step()
 
+            # Save losses for plotting
+            G_losses.append(errG.item())
+            D_losses.append(errD.item())
+
             # Output training stats
-            if i % 50 == 0:
-                print(f'[{epoch}/{num_epochs}][{i}/{len(dataloader)}]\t'
-                      f'Loss_D: {errD.item():.4f}\tLoss_G: {errG.item():.4f}\t'
-                      f'D(x): {D_x:.4f}\tD(G(z)): {D_G_z1:.4f} / {D_G_z2:.4f}')
+            if i % 10 == 0:
+                logging.info(f'[{epoch}/{num_epochs}][{i}/{len(dataloader)}]\t'
+                            f'Loss_D: {errD.item():.4f}\tLoss_G: '
+                            f'{errG.item():.4f}\t'
+                            f'D(x): {D_x:.4f}\tD(G(z)): '
+                            f'{D_G_z1:.4f} / {D_G_z2:.4f}')
 
             if ((iters % 500 == 0) or
                 ((epoch == num_epochs - 1) and (i == len(dataloader) - 1))):
@@ -221,7 +241,9 @@ def plot_results(
     dataloader: torch.utils.data.DataLoader,
     G_losses: List[float],
     D_losses: List[float],
-    img_list: List[torch.Tensor]):
+    img_list: List[torch.Tensor],
+    name: str,
+    headless: bool):
     """Plots a batch of real and fake images from the last epoch."""
     plt.figure(figsize=(10,5))
     plt.title('Generator and Discriminator Loss During Training')
@@ -230,7 +252,14 @@ def plot_results(
     plt.xlabel('iterations')
     plt.ylabel('Loss')
     plt.legend()
-    plt.show()
+
+    figures_dir = os.path.join(RESULTS_DIR, FIGURES_DIR)
+    os.makedirs(figures_dir, exist_ok=True)
+
+    # Save and optionally display loss graph
+    plt.savefig(os.path.join(figures_dir, f'{name}_gd_loss'), format='png')
+    if not headless:
+        plt.show()
 
     # Grab a batch of real images from the dataloader
     real_batch = next(iter(dataloader))
@@ -256,7 +285,12 @@ def plot_results(
     plt.axis('off')
     plt.title('Fake Images')
     plt.imshow(np.transpose(img_list[-1],(1,2,0)))
-    plt.show()
+
+    # Save and optionally show real/fake comparison
+    plt.savefig(
+        os.path.join(figures_dir, f'{name}_real_fake_comparison'), format='png')
+    if not headless:
+        plt.show()
 
 def main():
     """main."""
@@ -311,7 +345,15 @@ def main():
         args.beta1,
         args.beta2,
     )
-    plot_results(device, dataloader, G_losses, D_losses, img_list)
+    plot_results(
+        device,
+        dataloader,
+        G_losses,
+        D_losses,
+        img_list,
+        args.name,
+        args.headless,
+    )
 
 if __name__ == '__main__':
     main()
