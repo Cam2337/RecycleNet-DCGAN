@@ -217,7 +217,7 @@ def train(
     return (G_losses, D_losses, img_list)
 
 def plot_results(
-    device: torch.Device,
+    device: torch.device,
     dataloader: torch.utils.data.DataLoader,
     G_losses: List[float],
     D_losses: List[float],
