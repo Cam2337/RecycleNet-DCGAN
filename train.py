@@ -384,7 +384,8 @@ def main():
             'num_epochs': args.num_epochs,
             'beta1': args.beta1,
             'beta2': args.beta2})
-    
+
+    print("Best config: ", analysis.get_best_config(metric="mean_accuracy"))    
 
 if __name__ == '__main__':
     main()
