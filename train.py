@@ -19,6 +19,8 @@ import torch.optim as optim
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
+import ray
+from ray import tune
 
 # Constants #
 
@@ -100,15 +102,8 @@ def parse_args():
         raise ValueError(f'{args.dataroot} is not a valid directory.')
     return args
 
-def train(
-    netG: model.Generator,
-    netD: model.Discriminator,
-    dataloader: torch.utils.data.DataLoader,
-    device: torch.device,
-    learning_rate: float,
-    num_epochs: int,
-    beta1: int,
-    beta2: int) -> Tuple[List[float], List[float], List[torch.Tensor]]:
+def train(config: dict)
+    
     """The primary function for DCGAN training.
 
     Note: Per GANHacks, Discriminator training is conducted in *two* separate
@@ -130,6 +125,16 @@ def train(
         Discriminator, respectively, from each training iteration, along with
         a list of images.
     """
+
+    # Set parameters
+    netG = config['netG']
+    netD = config['netD']
+    dataloader = config['dataloader']
+    device = config['device']
+    learning_rate = config['learning_rate']
+    num_epochs = config['num_epochs']
+    beta1 = config['beta1']
+    beta2 = config['beta2']
 
     # Batch of input latent vectors
     fixed_noise = torch.randn(
@@ -153,6 +158,9 @@ def train(
     logging.info('Starting training...')
     for epoch in range(num_epochs):
         logging.info(f'Starting epoch: {epoch}...')
+        epoch_G_losses = []
+        epoch_D_losses = []
+
         for i, data in enumerate(dataloader, 0):
             ############################
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
@@ -217,6 +225,9 @@ def train(
             G_losses.append(errG.item())
             D_losses.append(errD.item())
 
+            epoch_G_losses.append(errG.item())
+            epoch_D_losses.append(errD.item())
+
             # Output training stats
             if i % 10 == 0:
                 logging.info(f'[{epoch}/{num_epochs}][{i}/{len(dataloader)}]\t'
@@ -233,6 +244,13 @@ def train(
                     vutils.make_grid(fake, padding=2, normalize=True))
 
             iters += 1
+        
+        # Compute accuracy from epoch losses
+        mean_G_loss = sum(epoch_G_losses) / float(len(epoch_G_losses))
+        mean_D_loss = sum(epoch_D_losses) / float(len(epoch_D_losses))
+        model_total_error = mean_G_losses + np.abs(mean_D_loss - 0.5)
+        accuracy = (2.0 - model_total_error) / 2.0
+        tun.track.log(mean_accuracy = accuracy)
 
     return (G_losses, D_losses, img_list)
 
@@ -354,6 +372,19 @@ def main():
         args.name,
         args.headless,
     )
+
+
+    # Run hyperparameter search
+    analysis = tune.run(train, 
+        config = {'netG': netG,
+            'netD': netD,
+            'dataloader': dataloader,
+            'device': device,
+            'learning_rate': tune.grid_search([0.0002, 0.01, 0.1]),
+            'num_epochs': args.num_epochs,
+            'beta1': args.beta1,
+            'beta2': args.beta2})
+    
 
 if __name__ == '__main__':
     main()
