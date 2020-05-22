@@ -5,7 +5,7 @@ import argparse
 import logging
 logging.root.setLevel(logging.INFO)
 import os
-from typing import List, Tuple
+from typing import Any, Dict, List, Tuple
 
 import model
 import utils
@@ -19,11 +19,19 @@ import torch.optim as optim
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
+import ray.tune as tune
 
 # Constants #
 
 RESULTS_DIR = 'results'
 FIGURES_DIR = 'figures'
+OPTIMAL_D_SCORE = 0.5
+
+FAKE_LABEL = 0
+REAL_LABEL = 1
+
+MIN_LR = 10e-5
+MAX_LR = 1.0
 
 # Public Functions #
 
@@ -88,10 +96,33 @@ def parse_args():
         default=1,
     )
     parser.add_argument(
+        '--num-trials',
+        help='The number of trials to use during hyperparameter searching.',
+        type=int,
+        default=10,
+    )
+    parser.add_argument(
+        '--num-trial-cpus',
+        help='The number of CPUs available during hyperparameter searching.',
+        type=int,
+        default=1,
+    )
+    parser.add_argument(
+        '--num-trial-gpus',
+        help='The number of GPUs available during hyperparameter searching.',
+        type=int,
+        default=1,
+    )
+    parser.add_argument(
         '--num-workers',
         help='The number of parallel workers for the DataLoader.',
         type=int,
         default=2,
+    )
+    parser.add_argument(
+        '--search-hyperparams',
+        help='If training should search over hyperparameters.',
+        action='store_true',
     )
 
     # Perform some basic argument validation
@@ -100,15 +131,51 @@ def parse_args():
         raise ValueError(f'{args.dataroot} is not a valid directory.')
     return args
 
-def train(
-    netG: model.Generator,
-    netD: model.Discriminator,
-    dataloader: torch.utils.data.DataLoader,
-    device: torch.device,
-    learning_rate: float,
-    num_epochs: int,
-    beta1: int,
-    beta2: int) -> Tuple[List[float], List[float], List[torch.Tensor]]:
+def hyperparameter_search(
+    num_samples: int,
+    resources_per_trial: Dict[str, float],
+    config: Dict[str, Any]):
+    """A wrapper around `train` that searches over specified hyperparams.
+
+    Args:
+        num_samples: The number of samples to run.
+        resources_per_trial: A dictionary of the available resources for trial
+        "actors" (e.g. {'gpu': 1}).
+        config: A dict with the following parameters:
+            * netG: The Generator to train.
+            * netD: The Discriminator to train.
+            * dataloader: The PyTorch DataLoader used to iterate through data.
+            * device: The device that the models are loaded onto.
+            * learning_rate: The learning rate to apply during param updates.
+            * num_epochs: The number of training epochs.
+            * beta1: The Beta1 parameter of Adam optimization.
+            * beta2: The Beta2 parameter of Adam optimization.
+            * pre_epoch: An optional hook for processing prior-to the epoch.
+            * post_epoch: An optional hook for processing post-epoch.
+    """
+    # Set mean_accuracy so that an average discriminator score of 0.5 is an
+    # accuracy of 1.0
+    def log_accuracy(**kwargs: Any):
+        D_batch_scores = kwargs['avg_D_batch_scores']
+        mean_D_batch_scores = sum(D_batch_scores) / len(D_batch_scores)
+        accuracy = 1 - 2 * abs(mean_D_batch_scores - OPTIMAL_D_SCORE)
+        tune.track.log(mean_accuracy=accuracy)
+
+    # Inject dependencies into training arguments and call train(...)
+    learning_rate = config['learning_rate']
+    config['learning_rate'] = tune.loguniform(MIN_LR, MAX_LR)
+    config['post_epoch'] = log_accuracy
+    analysis = tune.run(
+        train,
+        num_samples=num_samples,
+        resources_per_trial=resources_per_trial,
+        config=config
+    )
+
+    logging.info(
+        f'Optimal config: {analysis.get_best_config(metric="mean_accuracy")}')
+
+def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.Tensor]]:
     """The primary function for DCGAN training.
 
     Note: Per GANHacks, Discriminator training is conducted in *two* separate
@@ -116,20 +183,37 @@ def train(
     See more at: https://github.com/soumith/ganhacks.forward
 
     Args:
-        netG: The Generator to train.
-        netD: The Discriminator to train.
-        dataloader: The PyTorch DataLoader used to iterate through image data.
-        device: The device that the models are loaded onto.
-        learning_rate: The learning reat to apply during parameter updates.
-        num_epochs: The number of training epochs.
-        beta1: The Beta1 parameter of Adam optimization.
-        beta2: The Beta2 parameter of Adam optimization.
+        config: A dict with the following parameters:
+            * netG: The Generator to train.
+            * netD: The Discriminator to train.
+            * dataloader: The PyTorch DataLoader used to iterate through data.
+            * device: The device that the models are loaded onto.
+            * learning_rate: The learning rate to apply during updates.
+            * num_epochs: The number of training epochs.
+            * beta1: The Beta1 parameter of Adam optimization.
+            * beta2: The Beta2 parameter of Adam optimization.
+            * pre_epoch: An optional hook for processing prior-to the epoch.
+            * post_epoch: An optional hook for processing post-epoch.
 
     Returns:
         A tuple of lists containing the loss of the Generator and the
         Discriminator, respectively, from each training iteration, along with
         a list of images.
     """
+
+    # Set parameters
+    netG = config['netG']
+    netD = config['netD']
+    dataloader = config['dataloader']
+    device = config['device']
+    learning_rate = config['learning_rate']
+    num_epochs = config['num_epochs']
+    beta1 = config['beta1']
+    beta2 = config['beta2']
+
+    # Retrieve optional handlers
+    pre_epoch = config.get('pre_epoch')
+    post_epoch = config.get('post_epoch')
 
     # Batch of input latent vectors
     fixed_noise = torch.randn(
@@ -144,15 +228,21 @@ def train(
     img_list = []
     G_losses = []
     D_losses = []
+    D_batch_scores = []
     iters = 0
-
-    # Labels
-    real_label = 1
-    fake_label = 0
 
     logging.info('Starting training...')
     for epoch in range(num_epochs):
         logging.info(f'Starting epoch: {epoch}...')
+
+        # Call into pre-epoch handler, if present
+        if pre_epoch is not None:
+            pre_epoch(
+                epoch=epoch,
+                G_losses=G_losses,
+                D_losses=D_losses,
+                D_batch_scores=D_batch_scores)
+
         for i, data in enumerate(dataloader, 0):
             ############################
             # (1) Update D network: maximize log(D(x)) + log(1 - D(G(z)))
@@ -163,7 +253,7 @@ def train(
             ## Format batch
             real_cpu = data[0].to(device)
             b_size = real_cpu.size(0)
-            label = torch.full((b_size,), real_label, device=device)
+            label = torch.full((b_size,), REAL_LABEL, device=device)
 
             ## Forward pass real data through discriminator
             output = netD(real_cpu).view(-1)
@@ -179,7 +269,7 @@ def train(
 
             ## Generate fake image batch with G
             fake = netG(noise)
-            label.fill_(fake_label)
+            label.fill_(FAKE_LABEL)
 
             ## Classify all fake batch with D
             output = netD(fake.detach()).view(-1)
@@ -199,7 +289,7 @@ def train(
             # (2) Update G network: maximize log(D(G(z)))
             ###########################
             netG.zero_grad()
-            label.fill_(real_label)  # fake labels are real for generator cost
+            label.fill_(REAL_LABEL)  # fake labels are real for generator cost
 
             # Since we just updated D, perform another forward pass of all-fake
             # batch through D
@@ -217,6 +307,9 @@ def train(
             G_losses.append(errG.item())
             D_losses.append(errD.item())
 
+            # Save discriminator output
+            D_batch_scores.append(D_x)
+
             # Output training stats
             if i % 10 == 0:
                 logging.info(f'[{epoch}/{num_epochs}][{i}/{len(dataloader)}]\t'
@@ -231,8 +324,15 @@ def train(
                     fake = netG(fixed_noise).detach().cpu()
                 img_list.append(
                     vutils.make_grid(fake, padding=2, normalize=True))
-
             iters += 1
+
+        # Call into post-epoch handler, if present
+        if post_epoch is not None:
+            post_epoch(
+                epoch=epoch,
+                G_losses=G_losses,
+                D_losses=D_losses,
+                avg_D_batch_scores=D_batch_scores)
 
     return (G_losses, D_losses, img_list)
 
@@ -298,6 +398,7 @@ def main():
 
     device = torch.device((
         'cuda:0' if torch.cuda.is_available and args.num_gpus > 0 else 'cpu'))
+    logging.info(f'Running with device: {device}')
 
     # Initialize models
     netG = model.Generator().to(device)
@@ -316,7 +417,7 @@ def main():
 
     # Load dataset and resize
     dataset = dset.ImageFolder(
-        root=args.dataroot,
+        root=os.path.abspath(args.dataroot),
         transform=transforms.Compose([
             transforms.Resize(args.image_size),
             transforms.CenterCrop(args.image_size),
@@ -334,26 +435,37 @@ def main():
         num_workers=args.num_workers,
     )
 
-    # Run training and plot results
-    G_losses, D_losses, img_list = train(
-        netG,
-        netD,
-        dataloader,
-        device,
-        args.learning_rate,
-        args.num_epochs,
-        args.beta1,
-        args.beta2,
-    )
-    plot_results(
-        device,
-        dataloader,
-        G_losses,
-        D_losses,
-        img_list,
-        args.name,
-        args.headless,
-    )
+    config = {
+        'netG': netG,
+        'netD': netD,
+        'dataloader': dataloader,
+        'device': device,
+        'learning_rate': args.learning_rate,
+        'num_epochs': args.num_epochs,
+        'beta1': args.beta1,
+        'beta2': args.beta2,
+    }
+
+    if args.search_hyperparams:
+        logging.info('Beginning hyperparameter search...')
+        resources_per_trial = {
+            'cpu': args.num_trial_cpus,
+            'gpu': args.num_trial_gpus,
+        }
+        hyperparameter_search(args.num_trials, resources_per_trial, config)
+    else:
+        logging.info('Beginning training loop...')
+        G_losses, D_losses, img_list = train(config)
+        plot_results(
+            device,
+            dataloader,
+            G_losses,
+            D_losses,
+            img_list,
+            args.name,
+            args.headless,
+        )
+
 
 if __name__ == '__main__':
     main()
