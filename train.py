@@ -334,19 +334,54 @@ def main():
     logging.info(f'Generator:\n{netG}')
     logging.info(f'Discriminator:\n{netD}')
 
-    # Load dataset and resize
-    dataset = dset.ImageFolder(
+    # Load dataset and apply transforms (x3)
+    dataset_1 = dset.ImageFolder(
         root=args.dataroot,
         transform=transforms.Compose([
-            transforms.Resize(args.image_size),
+        	transforms.Resize(args.image_size),
             transforms.CenterCrop(args.image_size),
             transforms.ToTensor(),
             transforms.Normalize(
                 (0.5, 0.5, 0.5),
                 (0.5, 0.5, 0.5)
             ),
+            transforms.RandomCrop(args.image_size),
+            
         ]),
     )
+
+    dataset_2 = dset.ImageFolder(
+    	root = args.dataroot,
+    	transform = transforms.Compose([
+        	transforms.Resize(args.image_size),
+            transforms.CenterCrop(args.image_size),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                (0.5, 0.5, 0.5),
+                (0.5, 0.5, 0.5)
+            ),
+            transforms.RandomHorizontalFlip(p = 1)
+
+    	]),
+    )
+
+    dataset_3 = dset.ImageFolder(
+    	root = args.dataroot,
+    	transform = transforms.Compose([
+        	transforms.Resize(args.image_size),
+            transforms.CenterCrop(args.image_size),
+            transforms.ToTensor(),
+            transforms.Normalize(
+                (0.5, 0.5, 0.5),
+                (0.5, 0.5, 0.5)
+            ),
+            transforms.RandomRotation(degrees = 90.0)
+
+    	]),
+    )
+
+    dataset = torch.utils.data.ConcatDataset([dataset_1, dataset_2, dataset_3])
+
     dataloader = torch.utils.data.DataLoader(
         dataset,
         batch_size=args.batch_size,
