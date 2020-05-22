@@ -345,8 +345,7 @@ def main():
                 (0.5, 0.5, 0.5),
                 (0.5, 0.5, 0.5)
             ),
-            transforms.RandomCrop(args.image_size),
-            
+            transforms.RandomCrop(args.image_size)
         ]),
     )
 
@@ -361,7 +360,6 @@ def main():
                 (0.5, 0.5, 0.5)
             ),
             transforms.RandomHorizontalFlip(p = 1)
-
     	]),
     )
 
@@ -376,7 +374,6 @@ def main():
                 (0.5, 0.5, 0.5)
             ),
             transforms.RandomRotation(degrees = 90.0)
-
     	]),
     )
 
