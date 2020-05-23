@@ -25,6 +25,7 @@ import ray.tune as tune
 
 RESULTS_DIR = 'results'
 FIGURES_DIR = 'figures'
+NUM_CHANNELS = 3
 OPTIMAL_D_SCORE = 0.5
 
 FAKE_LABEL = 0
@@ -393,107 +394,6 @@ def plot_results(
         plt.show()
 
 
-def data_synthesis(
-    brightness: float, 
-    contrast: float, 
-    saturation: float, 
-    hue: float,
-    crop_size: int,
-    p_horiz_flip: float,
-    p_vertical_flip: float,
-    degrees: float,
-    image_size: int,
-    root: str
-    ):
-    """ Apply transformations to dataset """
-
-    dataset_1 = dset.ImageFolder(
-        root=os.path.abspath(root),
-        transform=transforms.Compose([
-            transforms.Resize(image_size),
-            transforms.CenterCrop(image_size),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                (0.5, 0.5, 0.5),
-                (0.5, 0.5, 0.5)
-            ),
-            transforms.ColorJitter(
-            	brightness=brightness, 
-            	contrast=contrast, 
-            	saturation=saturation, 
-            	hue=hue)
-        ]),
-    )
-
-    dataset_2 = dset.ImageFolder(
-        root=os.path.abspath(root),
-        transform=transforms.Compose([
-            transforms.Resize(image_size),
-            transforms.CenterCrop(image_size),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                (0.5, 0.5, 0.5),
-                (0.5, 0.5, 0.5)
-            ),
-            transforms.RandomCrop(
-            	size = crop_size)
-        ]),
-    )
-
-    dataset_3 = dset.ImageFolder(
-        root=os.path.abspath(root),
-        transform=transforms.Compose([
-            transforms.Resize(mage_size),
-            transforms.CenterCrop(image_size),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                (0.5, 0.5, 0.5),
-                (0.5, 0.5, 0.5)
-            ),
-            transforms.RandomHorizontalFlip(
-            	p = p_horiz_flip)
-        ]),
-    )
-    
-    dataset_4 = dset.ImageFolder(
-        root=os.path.abspath(root),
-        transform=transforms.Compose([
-            transforms.Resize(image_size),
-            transforms.CenterCrop(image_size),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                (0.5, 0.5, 0.5),
-                (0.5, 0.5, 0.5)
-            ),
-            transforms.RandomVerticalFlip(
-            	p = p_vertical_flip)
-        ]),
-    )
-
-    dataset_5 = dset.ImageFolder(
-        root=os.path.abspath(root),
-        transform=transforms.Compose([
-            transforms.Resize(image_size),
-            transforms.CenterCrop(image_size),
-            transforms.ToTensor(),
-            transforms.Normalize(
-                (0.5, 0.5, 0.5),
-                (0.5, 0.5, 0.5)
-            )
-        ]),
-    )
-
-    dataset = torch.utils.data.ConcatDataset([
-    	dataset_1, 
-    	dataset_2, 
-    	dataset_3,
-    	dataset_4,
-    	dataset_5])
-
-    return (dataset)
-
-
-
 def main():
     """main."""
     args = parse_args()
@@ -518,16 +418,21 @@ def main():
     logging.info(f'Discriminator:\n{netD}')
 
     # Load dataset and resize
-    dataset = data_synthesis(brightness = 0.05, 
-    	contrast = 0.05, 
-    	saturation = 0.05, 
-    	hue = 0.03,
-    	crop_size = args.image_size, 
-    	p_horiz_flip = 0.9,
-    	p_vertical_flip = 0.9,
-    	degrees = 90.0,
-    	image_size = int,
-    	root =  args.dataroot
+    dataset = utils.data_synthesis(
+        os.path.abspath(args.dataroot),
+        image_size=(args.image_size, args.image_size, NUM_CHANNELS),
+        custom_transforms=[
+            transforms.ColorJitter(
+                brightness=0.05,
+                contrast=0.05,
+                saturation=0.05,
+                hue=0.03,
+            ),
+            transforms.RandomCrop(size=args.image_size),
+            transforms.RandomHorizontalFlip(p=0.9),
+            transforms.RandomVerticalFlip(p=0.9),
+            transforms.Lambda(lambd=lambda img: img) # Identity transform
+        ]
     )
 
     dataloader = torch.utils.data.DataLoader(
