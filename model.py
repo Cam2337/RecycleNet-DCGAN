@@ -45,48 +45,61 @@ class Generator(nn.Module):
                 padding=0,
                 bias=False,
             ),
-            nn.BatchNorm2d(num_features=self.num_features * 8),
-            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(num_features=self.num_features*8),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
             # layer-2  512x(4x4) -> 256x(8x8)
             nn.ConvTranspose2d(
                 in_channels=(self.num_features * 8),
-                out_channels=(self.num_features * 4),
+                out_channels=(self.num_features * 8),
                 kernel_size=4,
                 stride=2,
                 padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(num_features=self.num_features * 4),
-            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(num_features=self.num_features * 8),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
-            # layer-3  256x(8x8) -> 128x(16x16)
+            # layer-3  512x(8x8) -> 512x(16x16)
+            nn.ConvTranspose2d(
+                in_channels=(self.num_features * 8),
+                out_channels=(self.num_features * 8),
+                kernel_size=4,
+                stride=2,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm2d(num_features=self.num_features * 8),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+
+            # layer-4  512x(16x16) -> 256x(32x32)
+            nn.ConvTranspose2d(
+                in_channels=(self.num_features * 8),
+                out_channels=(self.num_features*4),
+                kernel_size=4,
+                stride=2,
+                padding=1,
+                bias=False,
+            ),
+            nn.BatchNorm2d(num_features=self.num_features*4),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+
+
+            # layer-5  256x(32x32) -> 128x(64x64)
             nn.ConvTranspose2d(
                 in_channels=(self.num_features * 4),
-                out_channels=(self.num_features * 2),
-                kernel_size=4,
-                stride=2,
+                out_channels=(self.num_features*2),
+                kernel_size=3,
+                stride=1,
                 padding=1,
                 bias=False,
             ),
-            nn.BatchNorm2d(num_features=self.num_features * 2),
-            nn.ReLU(inplace=True),
+            nn.BatchNorm2d(num_features=self.num_features*2),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
 
-            # layer-4  128x(16x16) -> 64x(32x32)
+            # layer-5  128x(64x64) -> 3x(64x64)
             nn.ConvTranspose2d(
-                in_channels=(self.num_features * 2),
-                out_channels=(self.num_features),
-                kernel_size=4,
-                stride=2,
-                padding=1,
-                bias=False,
-            ),
-            nn.BatchNorm2d(num_features=self.num_features),
-            nn.ReLU(inplace=True),
-
-            # layer-5  64x(32x32) -> 3x(64x64)
-            nn.ConvTranspose2d(
-                in_channels=self.num_features,
+                in_channels=self.num_features*2,
                 out_channels=self.num_channels,
                 kernel_size=4,
                 stride=2,
