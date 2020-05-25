@@ -10,8 +10,8 @@ from typing import Any, Dict, List, Tuple
 import model
 import utils
 
-import matplotlib.pyplot as plt
 import numpy as np
+import ray.tune as tune
 import torch
 import torch.cuda
 import torch.nn as nn
@@ -19,34 +19,25 @@ import torch.optim as optim
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
+
 from torchvision.utils import save_image
-from numpy.random import choice
-import ray.tune as tune
 
 # Constants #
 
 RESULTS_DIR = 'results'
-FIGURES_DIR = 'figures'
 NUM_CHANNELS = 3
 OPTIMAL_D_SCORE = 0.5
 
 FAKE_LABEL = 0
 REAL_LABEL = 1
+SOFT_COEFF = 0.25
 
 MIN_LR = 10e-5
 MAX_LR = 1.0
 
-#create directory
-figures_dir = os.path.join(RESULTS_DIR, FIGURES_DIR)
-os.makedirs(figures_dir, exist_ok=True)
-
-# util to randomly flip some labels)
-def noisy_labels(y, p_flip):
-    n_select = int(p_flip * y.shape[0])
-    flip_ix = choice([i for i in range(y.shape[0])], size=n_select)
-    y[flip_ix] = 1 - y[flip_ix]
-    return y
-
+# Create figures directory
+FIGURES_DIR = os.path.join(RESULTS_DIR, 'figures')
+os.makedirs(FIGURES_DIR, exist_ok=True)
 
 # Public Functions #
 
@@ -86,11 +77,6 @@ def parse_args():
         help='The size of the images.',
         type=int,
         default=64,
-    )
-    parser.add_argument(
-        '--headless',
-        help='If training should run in "headless" mode (e.g. no operator).',
-        action='store_true',
     )
     parser.add_argument(
         '--learning-rate',
@@ -283,10 +269,12 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
             real_cpu = data[0].to(device)
             b_size = real_cpu.size(0)
             label = torch.full((b_size,), REAL_LABEL, device=device)
+            utils.add_label_noise(label, p_flip=0.05)
 
-            r_label_noisy = noisy_labels(label, 0.05)
-            r_label_soft = 1 + (torch.randn((b_size,), device = device)*0.25)
-            r_label_noisy_soft = torch.mul(r_label_noisy, r_label_soft)
+            r_label_soft = (
+                REAL_LABEL +
+                (torch.randn((b_size,), device=device)*SOFT_COEFF))
+            r_label_noisy_soft = torch.mul(label, r_label_soft)
 
             ## Forward pass real data through discriminator
             output = netD(real_cpu).view(-1)
@@ -303,8 +291,10 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
             ## Generate fake image batch with G
             fake = netG(noise)
             label.fill_(FAKE_LABEL)
-            f_label_soft = label + torch.abs(torch.randn((b_size,), device=device))*0.25
-            f_label_noisy_soft = noisy_labels(f_label_soft, 0.05)
+            utils.add_label_noise(label, p_flip=0.05)
+            f_label_noisy_soft = (
+                label +
+                torch.abs(torch.randn((b_size,), device=device))*SOFT_COEFF)
 
             ## Classify all fake batch with D
             output = netD(fake.detach()).view(-1)
@@ -359,7 +349,9 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
                     fake = netG(fixed_noise).detach().cpu()
                 img_list.append(
                     vutils.make_grid(fake, padding=2, normalize=True))
-                save_image(img_list[-1], figures_dir + "/gan_out_" + str(epoch) + "_" + str(i) + ".png")
+                save_image(
+                    img_list[-1],
+                    os.path.join(FIGURES_DIR, f'gan_out_{epoch}_{i}.png'))
 
             iters += 1
 
@@ -376,60 +368,6 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
                 avg_D_batch_scores=D_batch_scores)
 
     return (G_losses, D_losses, img_list)
-
-def plot_results(
-    device: torch.device,
-    dataloader: torch.utils.data.DataLoader,
-    G_losses: List[float],
-    D_losses: List[float],
-    img_list: List[torch.Tensor],
-    name: str,
-    headless: bool):
-    """Plots a batch of real and fake images from the last epoch."""
-    plt.figure(figsize=(10,5))
-    plt.title('Generator and Discriminator Loss During Training')
-    plt.plot(G_losses,label='G')
-    plt.plot(D_losses,label='D')
-    plt.xlabel('iterations')
-    plt.ylabel('Loss')
-    plt.legend()
-
-    # Save and optionally display loss graph
-    plt.savefig(os.path.join(figures_dir, f'{name}_gd_loss.png'), format='png')
-    if not headless:
-        plt.show()
-
-    # Grab a batch of real images from the dataloader
-    real_batch = next(iter(dataloader))
-
-    # Plot the real images
-    plt.figure(figsize=(15,15))
-    plt.subplot(1,2,1)
-    plt.axis('off')
-    plt.title('Real Images')
-    plt.imshow(
-        np.transpose(
-            vutils.make_grid(
-                real_batch[0].to(device)[:64],
-                padding=5,
-                normalize=True
-            ).cpu(),
-            (1,2,0),
-        ),
-    )
-
-    # Plot the fake images from the last epoch
-    plt.subplot(1,2,2)
-    plt.axis('off')
-    plt.title('Fake Images')
-    plt.imshow(np.transpose(img_list[-1],(1,2,0)))
-
-    # Save and optionally show real/fake comparison
-    plt.savefig(
-        os.path.join(figures_dir, f'{name}_real_fake_comparison.png'), format='png')
-    if not headless:
-        plt.show()
-
 
 def main():
     """main."""
@@ -501,14 +439,14 @@ def main():
     else:
         logging.info('Beginning training loop...')
         G_losses, D_losses, img_list = train(config)
-        plot_results(
-            device,
-            dataloader,
-            G_losses,
-            D_losses,
-            img_list,
-            args.name,
-            args.headless,
+        utils.plot_results(
+            device=device,
+            dataloader=dataloader,
+            G_losses=G_losses,
+            D_losses=D_losses,
+            img_list=img_list,
+            name=args.name,
+            outdir=FIGURES_DIR,
         )
 
 
