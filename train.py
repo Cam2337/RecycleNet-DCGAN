@@ -19,6 +19,8 @@ import torch.optim as optim
 import torchvision.datasets as dset
 import torchvision.transforms as transforms
 import torchvision.utils as vutils
+from torchvision.utils import save_image
+from numpy.random import choice
 import ray.tune as tune
 
 # Constants #
@@ -33,6 +35,18 @@ REAL_LABEL = 1
 
 MIN_LR = 10e-5
 MAX_LR = 1.0
+
+#create directory
+figures_dir = os.path.join(RESULTS_DIR, FIGURES_DIR)
+os.makedirs(figures_dir, exist_ok=True)
+
+# util to randomly flip some labels)
+def noisy_labels(y, p_flip):
+    n_select = int(p_flip * y.shape[0])
+    flip_ix = choice([i for i in range(y.shape[0])], size=n_select)
+    y[flip_ix] = 1 - y[flip_ix]
+    return y
+
 
 # Public Functions #
 
@@ -256,11 +270,15 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
             b_size = real_cpu.size(0)
             label = torch.full((b_size,), REAL_LABEL, device=device)
 
+            r_label_noisy = noisy_labels(label, 0.05)
+            r_label_soft = 1 + (torch.randn((b_size,), device = device)*0.25)
+            r_label_noisy_soft = torch.mul(r_label_noisy, r_label_soft)
+
             ## Forward pass real data through discriminator
             output = netD(real_cpu).view(-1)
 
             ## Calculate loss on all-real batch; calculate gradients
-            errD_real = lossF(output, label)
+            errD_real = lossF(output, r_label_noisy_soft)
             errD_real.backward()
             D_x = output.mean().item()
 
@@ -271,12 +289,14 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
             ## Generate fake image batch with G
             fake = netG(noise)
             label.fill_(FAKE_LABEL)
+            f_label_soft = label + torch.abs(torch.randn((b_size,), device=device))*0.25
+            f_label_noisy_soft = noisy_labels(f_label_soft, 0.05)
 
             ## Classify all fake batch with D
             output = netD(fake.detach()).view(-1)
 
             ## Calculate D's loss on the all-fake batch
-            errD_fake = lossF(output, label)
+            errD_fake = lossF(output, f_label_noisy_soft)
 
             ## Calculate the gradients for this batch
             errD_fake.backward()
@@ -325,6 +345,8 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
                     fake = netG(fixed_noise).detach().cpu()
                 img_list.append(
                     vutils.make_grid(fake, padding=2, normalize=True))
+                save_image(img_list[-1], figures_dir + "/gan_out_" + str(epoch) + "_" + str(i) + ".png")
+
             iters += 1
 
         # Call into post-epoch handler, if present
@@ -354,11 +376,8 @@ def plot_results(
     plt.ylabel('Loss')
     plt.legend()
 
-    figures_dir = os.path.join(RESULTS_DIR, FIGURES_DIR)
-    os.makedirs(figures_dir, exist_ok=True)
-
     # Save and optionally display loss graph
-    plt.savefig(os.path.join(figures_dir, f'{name}_gd_loss'), format='png')
+    plt.savefig(os.path.join(figures_dir, f'{name}_gd_loss.png'), format='png')
     if not headless:
         plt.show()
 
@@ -389,7 +408,7 @@ def plot_results(
 
     # Save and optionally show real/fake comparison
     plt.savefig(
-        os.path.join(figures_dir, f'{name}_real_fake_comparison'), format='png')
+        os.path.join(figures_dir, f'{name}_real_fake_comparison.png'), format='png')
     if not headless:
         plt.show()
 
