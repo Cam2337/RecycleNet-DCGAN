@@ -21,7 +21,7 @@ import torchvision.transforms as transforms
 import torchvision.utils as vutils
 from torchvision.utils import save_image
 from numpy.random import choice
-#import ray.tune as tune
+import ray.tune as tune
 
 # Constants #
 
@@ -40,7 +40,7 @@ MAX_LR = 1.0
 figures_dir = os.path.join(RESULTS_DIR, FIGURES_DIR)
 os.makedirs(figures_dir, exist_ok=True)
 
-# util to randomly flip some labe)
+# util to randomly flip some labels)
 def noisy_labels(y, p_flip):
     n_select = int(p_flip * y.shape[0])
     flip_ix = choice([i for i in range(y.shape[0])], size=n_select)
