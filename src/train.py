@@ -85,12 +85,6 @@ def parse_args():
         default=0.0002,
     )
     parser.add_argument(
-        '--learning-rate-decay',
-        help='The multiplicative decay factor to apply to the learning rate.',
-        type=float,
-        default=0.98,
-    )
-    parser.add_argument(
         '--num-epochs',
         help='The number of training epochs to run.',
         type=int,
@@ -199,7 +193,6 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
             * num_epochs: The number of training epochs.
             * beta1: The Beta1 parameter of Adam optimization.
             * beta2: The Beta2 parameter of Adam optimization.
-            * learning_rate_decay: The decay to apply to the learning_rate
             * pre_epoch: An optional hook for processing prior-to the epoch.
             * post_epoch: An optional hook for processing post-epoch.
     Returns:
@@ -214,7 +207,6 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
     dataloader = config['dataloader']
     device = config['device']
     learning_rate = config['learning_rate']
-    learning_rate_decay = config['learning_rate_decay']
     num_epochs = config['num_epochs']
     beta1 = config['beta1']
     beta2 = config['beta2']
@@ -231,12 +223,6 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
     lossF = nn.BCELoss()
     optD = optim.Adam(netD.parameters(), lr=learning_rate, betas=(beta1, beta2))
     optG = optim.Adam(netG.parameters(), lr=learning_rate, betas=(beta1, beta2))
-
-    # Wrap optimizers in schedulers for LR decay
-    optD_scheduler = optim.lr_scheduler.ExponentialLR(
-        optimizer=optD, gamma=learning_rate_decay)
-    optG_scheduler = optim.lr_scheduler.ExponentialLR(
-        optimizer=optG, gamma=learning_rate_decay)
 
     # Main training loop
     img_list = []
@@ -355,10 +341,6 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
 
             iters += 1
 
-        # Decay LR at the end of each epoch
-        optD_scheduler.step()
-        optG_scheduler.step()
-
         # Call into post-epoch handler, if present
         if post_epoch is not None:
             post_epoch(
@@ -423,7 +405,6 @@ def main():
         'dataloader': dataloader,
         'device': device,
         'learning_rate': args.learning_rate,
-        'learning_rate_decay': args.learning_rate_decay,
         'num_epochs': args.num_epochs,
         'beta1': args.beta1,
         'beta2': args.beta2,
