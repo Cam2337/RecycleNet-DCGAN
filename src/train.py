@@ -35,6 +35,8 @@ SOFT_COEFF = 0.25
 MIN_LR = 10e-5
 MAX_LR = 1.0
 
+NUM_FAKES = 500
+
 # Create figures directory
 FIGURES_DIR = os.path.join(RESULTS_DIR, 'figures')
 os.makedirs(FIGURES_DIR, exist_ok=True)
@@ -217,7 +219,7 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
 
     # Batch of input latent vectors
     fixed_noise = torch.randn(
-        netG.num_features, netG.latent_vector_size, 1, 1, device=device)
+        NUM_FAKES, netG.latent_vector_size, 1, 1, device=device)
 
     # Setup loss function and optimizers
     lossF = nn.BCELoss()
@@ -329,15 +331,29 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
                             f'D(x): {D_x:.4f}\tD(G(z)): '
                             f'{D_G_z1:.4f} / {D_G_z2:.4f}')
 
+
             if ((iters % 500 == 0) or
                 ((epoch == num_epochs - 1) and (i == len(dataloader) - 1))):
                 with torch.no_grad():
                     fake = netG(fixed_noise).detach().cpu()
                 img_list.append(
-                    vutils.make_grid(fake, padding=2, normalize=True))
-                save_image(
-                    img_list[-1],
-                    os.path.join(FIGURES_DIR, f'gan_out_{epoch}_{i}.png'))
+                    vutils.make_grid(fake[0:64], padding=2, normalize=True))
+                save_image(img_list[-1], FIGURES_DIR + "/gan_out_" + str(epoch) + "_" + str(i) + ".png")
+
+
+            if ((epoch >= 0.98*num_epochs) and (errG.item() <= 0.98) ):
+
+                logging.info(f'*SAVE-FAKE* [{epoch}/{num_epochs}][{i}/{len(dataloader)}]\t'
+                            f'Loss_D: {errD.item():.4f}\tLoss_G: '
+                            f'{errG.item():.4f}\t'
+                            f'D(x): {D_x:.4f}\tD(G(z)): '
+                            f'{D_G_z1:.4f} / {D_G_z2:.4f}')
+
+                with torch.no_grad():
+                    fake = netG(fixed_noise).detach().cpu()
+                for s in range(NUM_FAKES):
+                    save_image(fake[s,:,:,:],
+                               os.path.join(FIGURES_DIR, f'fake_out_{epoch}_{s}.png'))
 
             iters += 1
 
