@@ -42,7 +42,10 @@ GRID_SIZE = 64
 
 # Create figures directory
 FIGURES_DIR = os.path.join(RESULTS_DIR, 'figures')
+MODEL_DIR = os.path.join(RESULTS_DIR, 'model')
+
 os.makedirs(FIGURES_DIR, exist_ok=True)
+os.makedirs(MODEL_DIR, exist_ok=True)
 
 # Public Functions #
 
@@ -343,7 +346,12 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
                     vutils.make_grid(fake[0:GRID_SIZE], padding=2, normalize=True))
                 save_image(img_list[-1],
                            os.path.join(FIGURES_DIR , f'gan_out_{epoch}_{i}.png'))
-
+                torch.save({'epoch': epoch, 'model_state_dict': netG.state_dict(),
+                            'loss': errG.item(), 'optimizer_state_dict': optG.state_dict()},
+                            os.path.join(MODEL_DIR , f'modelG_{epoch}.model'))
+                torch.save({'epoch': epoch, 'model_state_dict': netD.state_dict(),
+                            'loss': errD.item(), 'optimizer_state_dict': optD.state_dict()},
+                            os.path.join(MODEL_DIR , f'modelD_{epoch}.model'))
 
             if ((epoch >= math.floor(IMG_SAVE_COEF*num_epochs)) and (errG.item() <= GAN_ERROR_THRESHOLD) ):
 
@@ -359,6 +367,9 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
                     save_image(fake[s,:,:,:],
                                os.path.join(FIGURES_DIR, f'fake_out_{epoch}_{s}.png'))
 
+                torch.save({'epoch': epoch, 'model_state_dict': netG.state_dict(),
+                            'loss': errG.item(), 'optimizer_state_dict': optG.state_dict()},
+                            os.path.join(MODEL_DIR , f'fake_modelG_{epoch}.model'))
             iters += 1
 
         # Call into post-epoch handler, if present
