@@ -35,10 +35,12 @@ SOFT_COEFF = 0.25
 MIN_LR = 10e-5
 MAX_LR = 1.0
 
-NUM_FAKES = 500
+CHECKPOINT_FREQ = 500
 IMG_SAVE_COEF = 0.98
 GAN_ERROR_THRESHOLD = 0.98
 GRID_SIZE = 64
+LOGGING_FREQ = 10
+NUM_FAKES = 500
 
 # Create figures directory
 FIGURES_DIR = os.path.join(RESULTS_DIR, 'figures')
@@ -91,6 +93,16 @@ def parse_args():
         help='The learning rate to apply during parameter updates.',
         type=float,
         default=0.0002,
+    )
+    parser.add_argument(
+        '--netD-checkpoint',
+        help='Initializes the Discriminator from the specified checkpoint.',
+        type=str,
+    )
+    parser.add_argument(
+        '--netG-checkpoint',
+        help='Initializes the Generator from the specified checkpoint.',
+        type=str,
     )
     parser.add_argument(
         '--num-epochs',
@@ -151,16 +163,7 @@ def hyperparameter_search(
         resources_per_trial: A dictionary of the available resources for trial
         "actors" (e.g. {'gpu': 1}).
         config: A dict with the following parameters:
-            * netG: The Generator to train.
-            * netD: The Discriminator to train.
-            * dataloader: The PyTorch DataLoader used to iterate through data.
-            * device: The device that the models are loaded onto.
-            * learning_rate: The learning rate to apply during param updates.
-            * num_epochs: The number of training epochs.
-            * beta1: The Beta1 parameter of Adam optimization.
-            * beta2: The Beta2 parameter of Adam optimization.
-            * pre_epoch: An optional hook for processing prior-to the epoch.
-            * post_epoch: An optional hook for processing post-epoch.
+            * See `train`
     """
     # Set mean_accuracy so that an average discriminator score of 0.5 is an
     # accuracy of 1.0
@@ -184,6 +187,18 @@ def hyperparameter_search(
     logging.info(
         f'Optimal config: {analysis.get_best_config(metric="mean_accuracy")}')
 
+def load_checkpoint(model, optimizer, filepath: str) -> Tuple[int, float]:
+    """Loads model and optimizer state from the provided .model file."""
+    if not os.path.exists(filepath):
+        raise ValueError(f'Filepath: {filepath} does not exist!')
+
+    logging.info(f'Loading checkpoint: {filepath}...')
+    checkpoint = torch.load(filepath)
+    model.load_state_dict(checkpoint['model_state_dict'])
+    optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+    return (checkpoint['epoch'], checkpoint['loss'])
+
 def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.Tensor]]:
     """The primary function for DCGAN training.
 
@@ -194,7 +209,9 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
     Args:
         config: A dict with the following parameters:
             * netG: The Generator to train.
+            * netG_checkpoint: An optional .model checkpoint to load from.
             * netD: The Discriminator to train.
+            * netD_checkpoint: An optional .model checkpoint to load from.
             * dataloader: The PyTorch DataLoader used to iterate through data.
             * device: The device that the models are loaded onto.
             * learning_rate: The learning rate to apply during updates.
@@ -219,9 +236,11 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
     beta1 = config['beta1']
     beta2 = config['beta2']
 
-    # Retrieve optional handlers
+    # Retrieve optional configuration parameters
     pre_epoch = config.get('pre_epoch')
     post_epoch = config.get('post_epoch')
+    netG_checkpoint = config.get('netG_checkpoint')
+    netD_checkpoint = config.get('netD_checkpoint')
 
     # Batch of input latent vectors
     fixed_noise = torch.randn(
@@ -232,6 +251,19 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
     optD = optim.Adam(netD.parameters(), lr=learning_rate, betas=(beta1, beta2))
     optG = optim.Adam(netG.parameters(), lr=learning_rate, betas=(beta1, beta2))
 
+    # Load from saved state, if provided
+    checkpoint_epochs = []
+    if netG_checkpoint is not None:
+        G_epoch, _ = load_checkpoint(netG, optG, netG_checkpoint)
+        checkpoint_epochs.append(G_epoch)
+    if netD_checkpoint is not None:
+        D_epoch, _ = load_checkpoint(netD, optD, netD_checkpoint)
+        checkpoint_epochs.append(D_epoch)
+
+    # Dump model configuration
+    logging.info(f'Generator:\n{netG}')
+    logging.info(f'Discriminator:\n{netD}')
+
     # Main training loop
     img_list = []
     G_losses = []
@@ -240,7 +272,8 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
     iters = 0
 
     logging.info('Starting training...')
-    for epoch in range(num_epochs):
+    epoch = min(checkpoint_epochs) if checkpoint_epochs else 0
+    while epoch < num_epochs:
 
         logging.info(f'Starting epoch: {epoch}...')
 
@@ -330,7 +363,7 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
             D_batch_scores.append(D_x)
 
             # Output training stats
-            if i % 10 == 0:
+            if i % LOGGING_FREQ == 0:
                 logging.info(f'[{epoch}/{num_epochs}][{i}/{len(dataloader)}]\t'
                             f'Loss_D: {errD.item():.4f}\tLoss_G: '
                             f'{errG.item():.4f}\t'
@@ -338,41 +371,55 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
                             f'{D_G_z1:.4f} / {D_G_z2:.4f}')
 
 
-            if ((iters % 500 == 0) or
+            # Save checkpoint; dump model and optimizer states along with grid
+            if ((iters % CHECKPOINT_FREQ == 0) or
                 ((epoch == num_epochs - 1) and (i == len(dataloader) - 1))):
                 with torch.no_grad():
                     fake = netG(fixed_noise).detach().cpu()
                 img_list.append(
-                    vutils.make_grid(fake[0:GRID_SIZE], padding=2, normalize=True))
+                    vutils.make_grid(
+                        fake[0:GRID_SIZE], padding=2, normalize=True))
                 save_image(img_list[-1],
-                           os.path.join(FIGURES_DIR , f'gan_out_{epoch}_{i}.png'))
-                torch.save({'epoch': epoch, 'model_state_dict': netG.state_dict(),
-                            'loss': errG.item(), 'optimizer_state_dict': optG.state_dict()},
-                            os.path.join(MODEL_DIR , f'modelG_{epoch}.model'))
-                torch.save({'epoch': epoch, 'model_state_dict': netD.state_dict(),
-                            'loss': errD.item(), 'optimizer_state_dict': optD.state_dict()},
-                            os.path.join(MODEL_DIR , f'modelD_{epoch}.model'))
+                           os.path.join(
+                               FIGURES_DIR , f'gan_out_{epoch}_{i}.png'))
+                torch.save(
+                    {
+                        'epoch': epoch,
+                        'model_state_dict': netG.state_dict(),
+                        'loss': errG.item(),
+                        'optimizer_state_dict': optG.state_dict()
+                    },
+                    os.path.join(MODEL_DIR , f'modelG_{epoch}.model'))
+                torch.save(
+                    {
+                        'epoch': epoch,
+                        'model_state_dict': netD.state_dict(),
+                        'loss': errD.item(),
+                        'optimizer_state_dict': optD.state_dict()
+                    },
+                    os.path.join(MODEL_DIR , f'modelD_{epoch}.model'))
 
-            if ((epoch >= math.floor(IMG_SAVE_COEF*num_epochs)) and (errG.item() <= GAN_ERROR_THRESHOLD) ):
-
-                logging.info(f'*SAVE-FAKE* [{epoch}/{num_epochs}][{i}/{len(dataloader)}]\t'
-                            f'Loss_D: {errD.item():.4f}\tLoss_G: '
-                            f'{errG.item():.4f}\t'
-                            f'D(x): {D_x:.4f}\tD(G(z)): '
-                            f'{D_G_z1:.4f} / {D_G_z2:.4f}')
-
+            # If we're sufficiently late into training, and the generator is
+            # having success fooling the discriminator, dump NUM_FAKES
+            # synthetic images
+            if ((epoch >= math.floor(IMG_SAVE_COEF*num_epochs)) and
+                (errG.item() <= GAN_ERROR_THRESHOLD)):
+                logging.info(f'*SAVE-FAKE* [{epoch}/{num_epochs}]'
+                             f'[{i}/{len(dataloader)}]\t'
+                             f'Loss_D: {errD.item():.4f}\tLoss_G: '
+                             f'{errG.item():.4f}\t'
+                             f'D(x): {D_x:.4f}\tD(G(z)): '
+                             f'{D_G_z1:.4f} / {D_G_z2:.4f}')
                 with torch.no_grad():
                     fake = netG(fixed_noise).detach().cpu()
                 for s in range(NUM_FAKES):
                     save_image(fake[s,:,:,:],
-                               os.path.join(FIGURES_DIR, f'fake_out_{epoch}_{s}.png'))
-
-                torch.save({'epoch': epoch, 'model_state_dict': netG.state_dict(),
-                            'loss': errG.item(), 'optimizer_state_dict': optG.state_dict()},
-                            os.path.join(MODEL_DIR , f'fake_modelG_{epoch}.model'))
+                               os.path.join(
+                                   FIGURES_DIR, f'fake_out_{epoch}_{s}.png'))
             iters += 1
 
         # Call into post-epoch handler, if present
+        epoch += 1
         if post_epoch is not None:
             post_epoch(
                 epoch=epoch,
@@ -402,9 +449,6 @@ def main():
     netG.apply(utils.dcgan_weights_reinit)
     netD.apply(utils.dcgan_weights_reinit)
 
-    logging.info(f'Generator:\n{netG}')
-    logging.info(f'Discriminator:\n{netD}')
-
     # Load dataset and resize
     dataset = utils.data_synthesis(
         os.path.abspath(args.dataroot),
@@ -432,7 +476,9 @@ def main():
 
     config = {
         'netG': netG,
+        'netG_checkpoint': args.netG_checkpoint,
         'netD': netD,
+        'netD_checkpoint': args.netD_checkpoint,
         'dataloader': dataloader,
         'device': device,
         'learning_rate': args.learning_rate,
