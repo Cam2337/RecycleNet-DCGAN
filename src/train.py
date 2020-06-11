@@ -11,7 +11,6 @@ import model
 import utils
 import math
 import numpy as np
-import ray.tune as tune
 import torch
 import torch.cuda
 import torch.nn as nn
@@ -140,11 +139,6 @@ def parse_args():
         type=int,
         default=2,
     )
-    parser.add_argument(
-        '--search-hyperparams',
-        help='If training should search over hyperparameters.',
-        action='store_true',
-    )
 
     # Perform some basic argument validation
     args = parser.parse_args()
@@ -152,42 +146,20 @@ def parse_args():
         raise ValueError(f'{args.dataroot} is not a valid directory.')
     return args
 
-def hyperparameter_search(
-    num_samples: int,
-    resources_per_trial: Dict[str, float],
-    config: Dict[str, Any]):
-    """A wrapper around `train` that searches over specified hyperparams.
+def synthesize_training_data(
+    netG: model.Generator, fixed_noise: torch.Tensor, epoch: int):
+    """Saves synthesized images given a latent vector and a generator model."""
+    with torch.no_grad():
+        fake = netG(fixed_noise).detach().cpu()
+        for s in range(NUM_FAKES):
+            save_image(
+                fake[s,:,:,:],
+                os.path.join(FIGURES_DIR, f'fake_out_{epoch}_{s}.png'))
 
-    Args:
-        num_samples: The number of samples to run.
-        resources_per_trial: A dictionary of the available resources for trial
-        "actors" (e.g. {'gpu': 1}).
-        config: A dict with the following parameters:
-            * See `train`
-    """
-    # Set mean_accuracy so that an average discriminator score of 0.5 is an
-    # accuracy of 1.0
-    def log_accuracy(**kwargs: Any):
-        D_batch_scores = kwargs['avg_D_batch_scores']
-        mean_D_batch_scores = sum(D_batch_scores) / len(D_batch_scores)
-        accuracy = 1 - 2 * abs(mean_D_batch_scores - OPTIMAL_D_SCORE)
-        tune.track.log(mean_accuracy=accuracy)
-
-    # Inject dependencies into training arguments and call train(...)
-    learning_rate = config['learning_rate']
-    config['learning_rate'] = tune.loguniform(MIN_LR, MAX_LR)
-    config['post_epoch'] = log_accuracy
-    analysis = tune.run(
-        train,
-        num_samples=num_samples,
-        resources_per_trial=resources_per_trial,
-        config=config
-    )
-
-    logging.info(
-        f'Optimal config: {analysis.get_best_config(metric="mean_accuracy")}')
-
-def load_checkpoint(model, optimizer, filepath: str) -> Tuple[int, float]:
+def load_checkpoint(
+    model: nn.Module,
+    optimizer: optim.Optimizer,
+    filepath: str) -> Tuple[int, float]:
     """Loads model and optimizer state from the provided .model file."""
     if not os.path.exists(filepath):
         raise ValueError(f'Filepath: {filepath} does not exist!')
@@ -198,6 +170,20 @@ def load_checkpoint(model, optimizer, filepath: str) -> Tuple[int, float]:
     optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
 
     return (checkpoint['epoch'], checkpoint['loss'])
+
+def save_checkpoint(
+    model: nn.Module,
+    optimizer: optim.Optimizer,
+    epoch: int,
+    loss: float,
+    filepath: str):
+    """Saves model and optimizer state to a filepath."""
+    torch.save({
+        'epoch': epoch,
+        'model_state_dict': model.state_dict(),
+        'loss': loss,
+        'optimizer_state_dict': optimizer.state_dict(),
+    }, filepath)
 
 def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.Tensor]]:
     """The primary function for DCGAN training.
@@ -374,48 +360,22 @@ def train(config: Dict[str, Any]) -> Tuple[List[float], List[float], List[torch.
             # Save checkpoint; dump model and optimizer states along with grid
             if ((iters % CHECKPOINT_FREQ == 0) or
                 ((epoch == num_epochs - 1) and (i == len(dataloader) - 1))):
-                with torch.no_grad():
-                    fake = netG(fixed_noise).detach().cpu()
                 img_list.append(
                     vutils.make_grid(
                         fake[0:GRID_SIZE], padding=2, normalize=True))
-                save_image(img_list[-1],
-                           os.path.join(
-                               FIGURES_DIR , f'gan_out_{epoch}_{i}.png'))
-                torch.save(
-                    {
-                        'epoch': epoch,
-                        'model_state_dict': netG.state_dict(),
-                        'loss': errG.item(),
-                        'optimizer_state_dict': optG.state_dict()
-                    },
-                    os.path.join(MODEL_DIR , f'modelG_{epoch}.model'))
-                torch.save(
-                    {
-                        'epoch': epoch,
-                        'model_state_dict': netD.state_dict(),
-                        'loss': errD.item(),
-                        'optimizer_state_dict': optD.state_dict()
-                    },
-                    os.path.join(MODEL_DIR , f'modelD_{epoch}.model'))
+                save_checkpoint(
+                    netG, optG, epoch, errG.item(),
+                    os.path.join(MODEL_DIR, f'modelG_{epoch}.model'))
+                save_checkpoint(
+                    netD, optD, epoch, errD.item(),
+                    os.path.join(MODEL_DIR, f'modelD_{epoch}.model'))
 
-            # If we're sufficiently late into training, and the generator is
-            # having success fooling the discriminator, dump NUM_FAKES
-            # synthetic images
-            if ((epoch >= math.floor(IMG_SAVE_COEF*num_epochs)) and
+            # If we're sufficiently late into training, and the generator is having
+            # success fooling the discriminator, synthesize training images
+            if ((epoch >= math.floor(IMG_SAVE_COEF * num_epochs)) and
                 (errG.item() <= GAN_ERROR_THRESHOLD)):
-                logging.info(f'*SAVE-FAKE* [{epoch}/{num_epochs}]'
-                             f'[{i}/{len(dataloader)}]\t'
-                             f'Loss_D: {errD.item():.4f}\tLoss_G: '
-                             f'{errG.item():.4f}\t'
-                             f'D(x): {D_x:.4f}\tD(G(z)): '
-                             f'{D_G_z1:.4f} / {D_G_z2:.4f}')
-                with torch.no_grad():
-                    fake = netG(fixed_noise).detach().cpu()
-                for s in range(NUM_FAKES):
-                    save_image(fake[s,:,:,:],
-                               os.path.join(
-                                   FIGURES_DIR, f'fake_out_{epoch}_{s}.png'))
+                synthesize_training_data(fixed_noise, epoch)
+
             iters += 1
 
         # Call into post-epoch handler, if present
@@ -487,26 +447,17 @@ def main():
         'beta2': args.beta2,
     }
 
-    if args.search_hyperparams:
-        logging.info('Beginning hyperparameter search...')
-        resources_per_trial = {
-            'cpu': args.num_trial_cpus,
-            'gpu': args.num_trial_gpus,
-        }
-        hyperparameter_search(args.num_trials, resources_per_trial, config)
-    else:
-        logging.info('Beginning training loop...')
-        G_losses, D_losses, img_list = train(config)
-        utils.plot_results(
-            device=device,
-            dataloader=dataloader,
-            G_losses=G_losses,
-            D_losses=D_losses,
-            img_list=img_list,
-            name=args.name,
-            outdir=FIGURES_DIR,
-        )
-
+    logging.info('Beginning training loop...')
+    G_losses, D_losses, img_list = train(config)
+    utils.plot_results(
+        device=device,
+        dataloader=dataloader,
+        G_losses=G_losses,
+        D_losses=D_losses,
+        img_list=img_list,
+        name=args.name,
+        outdir=FIGURES_DIR,
+    )
 
 if __name__ == '__main__':
     main()
