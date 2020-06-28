@@ -1,5 +1,9 @@
 # RecycleNet-DCGAN
 
+<p align="center">
+    <img src="https://user-images.githubusercontent.com/16138987/85941258-b35dc300-b8d6-11ea-8d7c-6c37955a1ee2.png"  style="width:400px;"/>
+</p>
+
 ## Overview
 
 This is the our team's final project codebase for Stanford's Spring 2020 offering of [CS230: Deep Learning](http://cs230.stanford.edu/). This project seeks to demonstrate the applicability of using machine-synthesized training data created by a deep convolutional generative adversarial network (DCGAN) to augment the capabilities of existing deep convolutional neural network (CNN) classifiers. Specifically, our project sought to use synthetic training data to augment the capability of an existing CNN recyclable waste classifier: [trashet](https://github.com/garythung/trashnet).
