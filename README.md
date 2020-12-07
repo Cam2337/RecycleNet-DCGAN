@@ -10,7 +10,7 @@ This is the our team's final project codebase for Stanford's Spring 2020 offerin
 
 Training for approxmiately 9000 epochs on an AWS p2x.large EC2 instance, we were able to improve classification of one of the worst performing `trashnet` classes (metal) by nearly ~16% using synthetic data, while lowering classification accuracy by only several percentage points in the majority of other classification classes (with the largest reductions being in classes whose appareance shows strong resemblance to the metal training data).
 
-Below is a snapshot of our results when training `trashnet` with an augmented dataset (original data plus the addition of synthetic metal images from RecyleNet-DCGAN) compared against a baseline run of `trashnet`. Be sure to check out our paper<sup>[1](#f1)</sup> for a more in-depth look at our research and results.
+Below is a snapshot of our results when training `trashnet` with an augmented dataset (original data plus the addition of synthetic metal images from RecyleNet-DCGAN) compared against a baseline run of `trashnet`. Be sure to check out our paper for a more in-depth look at our research and results.
 
 <table>
 <tr><th>Baseline Trashnet</th><th>Trashnet trained with augmented dataset</th>
@@ -67,7 +67,7 @@ Run `./setup.sh` to install the necessary dependencies. Dependencies for the pro
 
 To begin, ensure that your repository has its submodules initialized and ready. To work successfully, it will need to have the [trashnet fork](https://github.com/Cam2337/trashnet) cloned to the proper SHA.
 
-From the root directory, you will find that the `src/` subdirectory contains all of the Python source code that you'll need. In addition to the Python source code, the `data/` directory contains symbolic links to the underlying `trashnet` submodule raw data used for training the `RecycleNet-DCGAN`<sup>[2](#f2)</sup>.
+From the root directory, you will find that the `src/` subdirectory contains all of the Python source code that you'll need. In addition to the Python source code, the `data/` directory contains symbolic links to the underlying `trashnet` submodule raw data used for training the `RecycleNet-DCGAN`<sup>[1](#f1)</sup>.
 
 After performing initial setup in "Getting Started", you can begin training. Ensure that you are active in a local Python-3 virtual environment (venv). One should have already been created and setup for you after executing `setup.sh`:
 ```
@@ -103,7 +103,7 @@ Now that you have properly synthesized recyclable waste data we need to tell the
 --train-list submodules/trashnet/data/one-indexed-files-notrash_train.txt
 ```
 
-In the above example, we're telling `index_synthesized_images.py` to place all of our synthetic metal images into the `src/data/dataset-resized/metal/` directory of the `trashnet` submodule. We're placing it there via the symlinks in `src/data/raw_data`<sup>[2](#f2)</sup>. Of note, the `--train-list` argument specifies the indexed list of images that `trashnet` should use for its training purposes. By adding references to our synthetic images here, this will instruct `trashnet` to use them during training, but **not** for validation or test.
+In the above example, we're telling `index_synthesized_images.py` to place all of our synthetic metal images into the `src/data/dataset-resized/metal/` directory of the `trashnet` submodule. We're placing it there via the symlinks in `src/data/raw_data`<sup>[1](#f1)</sup>. Of note, the `--train-list` argument specifies the indexed list of images that `trashnet` should use for its training purposes. By adding references to our synthetic images here, this will instruct `trashnet` to use them during training, but **not** for validation or test.
 
 ### Step 3: Train/Validate/Test the `trashnet` model
 
@@ -132,6 +132,4 @@ Contribution instructions follow from the [trashnet project](https://github.com/
 
 We would like to thank the creators of the `trashnet` project: [Gary Thung](https://github.com/garythung), and [Mindy Yang](https://github.com/yangmindy4), for their efforts to leverage AI for positive change. We would also like to thank Dr. Andrew Ng, the entire [CS230](http://cs230.stanford.edu/) TA staff, and give a personal thanks to our project mentor [Shahab Mousavi](https://github.com/ssmousav) for all of the support and guidance throughout the project.
 
-<a id="f1">1.</a> Research paper will be linked after the end of the grading period.
-
-<a id="f2">2.</a> The `RecyleNet-DCGAN` must train on **one** waste category at a time, so that a suitable training label can be assigned to the resulting synthetic images. To specify a single-class folder, the PyTorch [ImageFolder](https://pytorch.org/docs/stable/torchvision/datasets.html#imagefolder) class expects a hierarchy. Nesting references to the underlying raw data is a convenience mechanism to aid the user during training. See more at: [PyTorch#669]( https://github.com/pytorch/vision/issues/669).
+<a id="f1">1.</a> The `RecyleNet-DCGAN` must train on **one** waste category at a time, so that a suitable training label can be assigned to the resulting synthetic images. To specify a single-class folder, the PyTorch [ImageFolder](https://pytorch.org/docs/stable/torchvision/datasets.html#imagefolder) class expects a hierarchy. Nesting references to the underlying raw data is a convenience mechanism to aid the user during training. See more at: [PyTorch#669]( https://github.com/pytorch/vision/issues/669).
