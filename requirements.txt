@@ -30,7 +30,7 @@ ninja==1.9.0.post1
 numpy==1.18.3
 pandas==1.0.3
 Pillow==7.1.2
-protobuf==3.12.1
+protobuf==3.15.0
 py-spy==0.3.3
 pyparsing==2.4.7
 pyrsistent==0.16.0
