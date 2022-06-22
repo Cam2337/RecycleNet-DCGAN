@@ -27,7 +27,7 @@ msgpack==0.6.2
 multidict==4.7.6
 networkx==2.4
 ninja==1.9.0.post1
-numpy==1.18.3
+numpy==1.22.0
 pandas==1.0.3
 Pillow==7.1.2
 protobuf==3.12.1
